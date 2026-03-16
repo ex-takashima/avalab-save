@@ -285,6 +285,56 @@ async function downloadAsZip() {
   }
 }
 
+// --- Fetch images page by page from popup (avoids SW timeout) ---
+async function fetchAllImagesPaged(maxCount, dateFrom, dateTo) {
+  const images = [];
+  let offset = 0;
+  let hasNext = true;
+
+  while (hasNext) {
+    const remaining = maxCount > 0 ? maxCount - images.length : BATCH_SIZE;
+    const limit = maxCount > 0 ? Math.min(BATCH_SIZE, remaining) : BATCH_SIZE;
+    if (maxCount > 0 && remaining <= 0) break;
+
+    showStatus(`画像情報を取得中... (${images.length}件取得済)`, 0);
+
+    const result = await sendToBg({
+      type: 'FETCH_IMAGE_BATCH',
+      limit,
+      offset
+    });
+
+    if (result.error) throw new Error(result.error);
+
+    let batch = result.images.filter((img) => img.status === 'success');
+
+    // Date filter
+    if (dateFrom) {
+      const from = new Date(dateFrom + 'T00:00:00Z');
+      batch = batch.filter(img => new Date(img.created_at) >= from);
+    }
+    if (dateTo) {
+      const to = new Date(dateTo + 'T23:59:59Z');
+      batch = batch.filter(img => new Date(img.created_at) <= to);
+    }
+
+    images.push(...batch);
+    hasNext = result.has_next;
+    offset += limit;
+
+    // If dateFrom is set and we've gone past it (images are sorted newest first),
+    // check if we should stop
+    if (dateFrom && result.images.length > 0) {
+      const oldest = result.images[result.images.length - 1];
+      if (new Date(oldest.created_at) < new Date(dateFrom + 'T00:00:00Z')) {
+        break; // All remaining images are older than dateFrom
+      }
+    }
+  }
+
+  return images;
+}
+
 // --- Event listeners ---
 $('#btn-fetch').addEventListener('click', async () => {
   clearError();
@@ -293,17 +343,16 @@ $('#btn-fetch').addEventListener('click', async () => {
 
   try {
     const maxCount = parseInt($('#limit').value);
-    showStatus('画像情報を取得中...', 0);
-    const result = await sendToBg({ type: 'FETCH_IMAGES', maxCount });
+    const dateFrom = $('#date-from').value || null;
+    const dateTo = $('#date-to').value || null;
 
-    if (result.error) {
-      showError(result.error);
-      hideStatus();
-    } else if (result.images.length === 0) {
-      showError('生成画像が見つかりませんでした。');
+    const images = await fetchAllImagesPaged(maxCount, dateFrom, dateTo);
+
+    if (images.length === 0) {
+      showError('該当する生成画像が見つかりませんでした。');
       hideStatus();
     } else {
-      allImages = result.images;
+      allImages = images;
       hideStatus();
       renderImageList(allImages);
     }

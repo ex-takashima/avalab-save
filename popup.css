@@ -49,10 +49,21 @@ h1 {
   gap: 8px;
 }
 
-.settings select {
+.settings select, .settings input[type="date"] {
   padding: 4px 8px;
   border: 1px solid #ccc;
   border-radius: 4px;
+  font-size: 13px;
+}
+
+.date-filter {
+  margin-top: 8px;
+}
+
+.date-filter .hint {
+  font-size: 11px;
+  color: #999;
+  margin-left: 4px;
 }
 
 .btn {

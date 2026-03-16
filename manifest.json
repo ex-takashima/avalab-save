@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Avalab.ai 一括ダウンロード",
   "description": "Avalab.aiで生成した画像とプロンプトを一括ダウンロードするChrome拡張機能",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "permissions": [
     "storage",
     "tabs"

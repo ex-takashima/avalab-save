@@ -23,6 +23,15 @@
           <option value="0">全件</option>
         </select>
       </label>
+      <div class="date-filter">
+        <label>
+          <span>期間指定</span>
+          <input type="date" id="date-from" placeholder="開始日">
+          <span>〜</span>
+          <input type="date" id="date-to" placeholder="終了日">
+        </label>
+        <span class="hint">※ 空欄の場合は全期間</span>
+      </div>
     </div>
 
     <button id="btn-fetch" class="btn primary">画像一覧を取得</button>
