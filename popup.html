@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Avalab.ai 一括DL</h1>
+
+    <div class="login-check">
+      <span>状態: </span><span id="login-status" class="login-checking">確認中...</span>
+      <button id="btn-retry" class="btn small" style="margin-left:8px" hidden>再取得</button>
+    </div>
+
+    <div class="settings">
+      <label>
+        <span>取得件数上限</span>
+        <select id="limit">
+          <option value="50">50件</option>
+          <option value="100" selected>100件</option>
+          <option value="500">500件</option>
+          <option value="0">全件</option>
+        </select>
+      </label>
+    </div>
+
+    <button id="btn-fetch" class="btn primary">画像一覧を取得</button>
+
+    <div id="status" class="status" hidden>
+      <div class="progress-bar"><div id="progress" class="progress"></div></div>
+      <p id="status-text"></p>
+    </div>
+
+    <div id="result" hidden>
+      <p id="result-text"></p>
+      <div class="actions">
+        <button id="btn-select-all" class="btn small">全選択</button>
+        <button id="btn-deselect-all" class="btn small">全解除</button>
+        <label id="btn-load-failed" class="btn small" style="cursor:pointer">
+          失敗リスト読込
+          <input type="file" id="file-failed" accept=".txt" style="display:none">
+        </label>
+      </div>
+      <div id="image-list" class="image-list"></div>
+      <button id="btn-download" class="btn primary">選択した画像をZIPダウンロード</button>
+    </div>
+
+    <div id="error" class="error" hidden></div>
+  </div>
+
+  <script src="lib/jszip.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

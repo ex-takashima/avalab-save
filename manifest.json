@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Avalab.ai 一括ダウンロード",
+  "description": "Avalab.aiで生成した画像とプロンプトを一括ダウンロードするChrome拡張機能",
+  "version": "1.4.0",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://api.avalab.ai/*",
+    "https://avalab-prod-s3-user-resources.s3.amazonaws.com/*",
+    "https://avalab-prod-s3-datasets-models.s3.amazonaws.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://avalab.ai/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://avalab.ai/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
