@@ -52,7 +52,16 @@
         </label>
       </div>
       <div id="image-list" class="image-list"></div>
-      <button id="btn-download" class="btn primary">選択した画像をZIPダウンロード</button>
+      <div class="save-mode">
+        <label class="save-mode-label">
+          <input type="radio" name="save-mode" value="zip" checked> ZIPダウンロード
+        </label>
+        <label class="save-mode-label">
+          <input type="radio" name="save-mode" value="folder"> フォルダに保存
+          <span class="hint">（大量保存向け・メモリ節約）</span>
+        </label>
+      </div>
+      <button id="btn-download" class="btn primary">選択した画像をダウンロード</button>
     </div>
 
     <div id="error" class="error" hidden></div>

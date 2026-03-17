@@ -285,6 +285,155 @@ async function downloadAsZip() {
   }
 }
 
+// --- Download to folder (File System Access API) ---
+async function downloadToFolder() {
+  const checkboxes = document.querySelectorAll('#image-list input[type="checkbox"]:checked');
+  if (checkboxes.length === 0) {
+    showError('ダウンロードする画像を選択してください。');
+    return;
+  }
+
+  // Request folder access from user
+  let dirHandle;
+  try {
+    dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch (e) {
+    if (e.name === 'AbortError') return; // User cancelled
+    showError('フォルダの選択に失敗しました: ' + e.message);
+    return;
+  }
+
+  clearError();
+  const selectedIndices = [...checkboxes].map((cb) => parseInt(cb.dataset.index));
+  const failedImages = [];
+  let done = 0;
+  const total = selectedIndices.length;
+
+  let offset = 0;
+  let hasNext = true;
+
+  while (offset < allImages.length && hasNext) {
+    const batchEnd = offset + BATCH_SIZE;
+    const batchIndices = selectedIndices.filter(i => i >= offset && i < batchEnd);
+
+    if (batchIndices.length > 0) {
+      showStatus(`URL更新中... (バッチ ${Math.floor(offset / BATCH_SIZE) + 1})`, (done / total) * 100);
+      const batchResult = await sendToBg({
+        type: 'FETCH_IMAGE_BATCH',
+        limit: BATCH_SIZE,
+        offset: offset
+      });
+
+      if (batchResult.error) {
+        showError(batchResult.error);
+        return;
+      }
+
+      const freshImages = batchResult.images;
+      hasNext = batchResult.has_next;
+
+      const freshMap = {};
+      for (const img of freshImages) {
+        freshMap[img.id] = img;
+      }
+
+      for (const idx of batchIndices) {
+        const originalImg = allImages[idx];
+        const img = freshMap[originalImg.id] || originalImg;
+
+        const date = new Date(img.created_at);
+        const dateStr = [
+          date.getFullYear(),
+          String(date.getMonth() + 1).padStart(2, '0'),
+          String(date.getDate()).padStart(2, '0'),
+        ].join('');
+
+        const baseName = `avalab_${dateStr}_${img.id}`;
+        showStatus(`ダウンロード中... (${done + 1}/${total})`, (done / total) * 100);
+
+        let success = false;
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            if (retry > 0) {
+              showStatus(`リトライ中... (${done + 1}/${total}) 試行${retry + 1}/3`, (done / total) * 100);
+              await new Promise(r => setTimeout(r, 1000 * retry));
+            }
+            const result = await sendToBg({ type: 'FETCH_IMAGE_BLOB', url: img.url });
+            if (result.error) throw new Error(result.error);
+            const data = dataUrlToUint8Array(result.dataUrl);
+
+            // Write image file directly to folder
+            const imgFile = await dirHandle.getFileHandle(`${baseName}.png`, { create: true });
+            const imgWritable = await imgFile.createWritable();
+            await imgWritable.write(data);
+            await imgWritable.close();
+
+            success = true;
+            break;
+          } catch (e) {
+            console.error(`Failed to fetch image ${img.id} (attempt ${retry + 1}):`, e);
+            if (retry === 2) {
+              failedImages.push({
+                baseName, id: img.id, error: e.message,
+                hasUrl: !!img.url, status: img.status,
+                urlPrefix: img.url ? img.url.substring(0, 80) : 'null'
+              });
+            }
+          }
+        }
+
+        // Write prompt text file
+        const txtFile = await dirHandle.getFileHandle(`${baseName}.txt`, { create: true });
+        const txtWritable = await txtFile.createWritable();
+        await txtWritable.write(buildPromptText(img));
+        await txtWritable.close();
+
+        done++;
+        showStatus(`ダウンロード中... (${done}/${total})`, (done / total) * 100);
+      }
+    } else {
+      const batchResult = await sendToBg({
+        type: 'FETCH_IMAGE_BATCH',
+        limit: BATCH_SIZE,
+        offset: offset
+      });
+      if (batchResult.error) break;
+      hasNext = batchResult.has_next;
+    }
+
+    offset += BATCH_SIZE;
+  }
+
+  // Write failure report if any
+  if (failedImages.length > 0) {
+    const report = failedImages.map(f =>
+      `${f.baseName}\n  エラー: ${f.error}\n  URL有無: ${f.hasUrl ? 'あり' : 'なし(null)'}\n  status: ${f.status}\n  URL先頭: ${f.urlPrefix}`
+    ).join('\n\n');
+    const failFile = await dirHandle.getFileHandle('_FAILED_DOWNLOADS.txt', { create: true });
+    const failWritable = await failFile.createWritable();
+    await failWritable.write(
+      `以下の画像のダウンロードに失敗しました（3回リトライ済み）:\n\n${report}\n\n` +
+      `画像一覧を再取得してからやり直すと、新しいURLで取得できる場合があります。`);
+    await failWritable.close();
+  }
+
+  // Uncheck successfully downloaded images
+  if (failedImages.length > 0) {
+    const failedIds = new Set(failedImages.map(f => f.id));
+    document.querySelectorAll('#image-list input[type="checkbox"]').forEach((cb) => {
+      const idx = parseInt(cb.dataset.index);
+      const img = allImages[idx];
+      if (!failedIds.has(img.id)) {
+        cb.checked = false;
+      }
+    });
+    showStatus(`完了! ${total - failedImages.length}/${total}件を保存（${failedImages.length}件失敗 → チェック残り）`, 100);
+  } else {
+    document.querySelectorAll('#image-list input[type="checkbox"]').forEach((cb) => (cb.checked = false));
+    showStatus(`完了! ${total}件の画像をフォルダに保存しました。`, 100);
+  }
+}
+
 // --- Fetch images page by page from popup (avoids SW timeout) ---
 async function fetchAllImagesPaged(maxCount, dateFrom, dateTo) {
   const images = [];
@@ -366,10 +515,15 @@ $('#btn-fetch').addEventListener('click', async () => {
 
 $('#btn-download').addEventListener('click', async () => {
   $('#btn-download').disabled = true;
+  const mode = document.querySelector('input[name="save-mode"]:checked').value;
   try {
-    await downloadAsZip();
+    if (mode === 'folder') {
+      await downloadToFolder();
+    } else {
+      await downloadAsZip();
+    }
   } catch (e) {
-    showError('ZIPダウンロードに失敗しました: ' + e.message);
+    showError((mode === 'folder' ? 'フォルダ保存' : 'ZIPダウンロード') + 'に失敗しました: ' + e.message);
   } finally {
     $('#btn-download').disabled = false;
   }

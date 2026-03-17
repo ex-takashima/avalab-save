@@ -175,6 +175,28 @@ h1 {
   font-weight: bold;
 }
 
+.save-mode {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: #f5f3ff;
+  border-radius: 6px;
+}
+
+.save-mode-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.save-mode-label .hint {
+  font-size: 10px;
+  color: #999;
+}
+
 .error {
   margin-top: 12px;
   padding: 10px;
