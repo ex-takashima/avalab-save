@@ -60,6 +60,15 @@
           <input type="radio" name="save-mode" value="folder"> フォルダに保存
           <span class="hint">（大量保存向け・メモリ節約）</span>
         </label>
+        <label class="save-mode-label" style="margin-left:auto">
+          並列数
+          <select id="concurrency">
+            <option value="1">1</option>
+            <option value="3">3</option>
+            <option value="5" selected>5</option>
+            <option value="10">10</option>
+          </select>
+        </label>
       </div>
       <button id="btn-download" class="btn primary">選択した画像をダウンロード</button>
     </div>

@@ -8,6 +8,33 @@ async function sendToBg(msg) {
   return chrome.runtime.sendMessage(msg);
 }
 
+// --- Parallel execution helper ---
+async function parallelMap(items, concurrency, fn, onProgress) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  let completed = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex++;
+      results[idx] = await fn(items[idx], idx);
+      completed++;
+      if (onProgress) onProgress(completed, items.length);
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(concurrency, items.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
+function getConcurrency() {
+  return parseInt($('#concurrency').value) || 5;
+}
+
 // --- UI helpers ---
 function showStatus(text, pct) {
   $('#status').hidden = false;
@@ -178,12 +205,13 @@ async function downloadAsZip() {
         freshMap[img.id] = img;
       }
 
-      // Download images in this batch
-      for (const idx of batchIndices) {
+      // Download images in this batch (parallel)
+      const batchItems = batchIndices.map(idx => {
         const originalImg = allImages[idx];
-        // Use fresh URL if available, fall back to original
-        const img = freshMap[originalImg.id] || originalImg;
+        return freshMap[originalImg.id] || originalImg;
+      });
 
+      await parallelMap(batchItems, getConcurrency(), async (img) => {
         const date = new Date(img.created_at);
         const dateStr = [
           date.getFullYear(),
@@ -192,20 +220,14 @@ async function downloadAsZip() {
         ].join('');
 
         const baseName = `avalab_${dateStr}_${img.id}`;
-        showStatus(`ダウンロード中... (${done + 1}/${total})`, (done / total) * 100);
 
-        let success = false;
         for (let retry = 0; retry < 3; retry++) {
           try {
-            if (retry > 0) {
-              showStatus(`リトライ中... (${done + 1}/${total}) 試行${retry + 1}/3`, (done / total) * 100);
-              await new Promise(r => setTimeout(r, 1000 * retry));
-            }
+            if (retry > 0) await new Promise(r => setTimeout(r, 1000 * retry));
             const result = await sendToBg({ type: 'FETCH_IMAGE_BLOB', url: img.url });
             if (result.error) throw new Error(result.error);
             const data = dataUrlToUint8Array(result.dataUrl);
             zip.file(`${baseName}.png`, data);
-            success = true;
             break;
           } catch (e) {
             console.error(`Failed to fetch image ${img.id} (attempt ${retry + 1}):`, e);
@@ -219,11 +241,12 @@ async function downloadAsZip() {
           }
         }
 
-        // Always save prompt text
         zip.file(`${baseName}.txt`, buildPromptText(img));
-        done++;
-        showStatus(`ダウンロード中... (${done}/${total})`, (done / total) * 100);
-      }
+      }, (completed, batchTotal) => {
+        showStatus(`ダウンロード中... (${done + completed}/${total})`, ((done + completed) / total) * 100);
+      });
+
+      done += batchItems.length;
     } else {
       // No selected images in this range, still need to check has_next
       // Do a lightweight fetch just to keep pagination in sync
@@ -337,10 +360,13 @@ async function downloadToFolder() {
         freshMap[img.id] = img;
       }
 
-      for (const idx of batchIndices) {
+      // Download images in this batch (parallel)
+      const batchItems = batchIndices.map(idx => {
         const originalImg = allImages[idx];
-        const img = freshMap[originalImg.id] || originalImg;
+        return freshMap[originalImg.id] || originalImg;
+      });
 
+      await parallelMap(batchItems, getConcurrency(), async (img) => {
         const date = new Date(img.created_at);
         const dateStr = [
           date.getFullYear(),
@@ -349,26 +375,18 @@ async function downloadToFolder() {
         ].join('');
 
         const baseName = `avalab_${dateStr}_${img.id}`;
-        showStatus(`ダウンロード中... (${done + 1}/${total})`, (done / total) * 100);
 
-        let success = false;
         for (let retry = 0; retry < 3; retry++) {
           try {
-            if (retry > 0) {
-              showStatus(`リトライ中... (${done + 1}/${total}) 試行${retry + 1}/3`, (done / total) * 100);
-              await new Promise(r => setTimeout(r, 1000 * retry));
-            }
+            if (retry > 0) await new Promise(r => setTimeout(r, 1000 * retry));
             const result = await sendToBg({ type: 'FETCH_IMAGE_BLOB', url: img.url });
             if (result.error) throw new Error(result.error);
             const data = dataUrlToUint8Array(result.dataUrl);
 
-            // Write image file directly to folder
             const imgFile = await dirHandle.getFileHandle(`${baseName}.png`, { create: true });
             const imgWritable = await imgFile.createWritable();
             await imgWritable.write(data);
             await imgWritable.close();
-
-            success = true;
             break;
           } catch (e) {
             console.error(`Failed to fetch image ${img.id} (attempt ${retry + 1}):`, e);
@@ -382,15 +400,15 @@ async function downloadToFolder() {
           }
         }
 
-        // Write prompt text file
         const txtFile = await dirHandle.getFileHandle(`${baseName}.txt`, { create: true });
         const txtWritable = await txtFile.createWritable();
         await txtWritable.write(buildPromptText(img));
         await txtWritable.close();
+      }, (completed, batchTotal) => {
+        showStatus(`ダウンロード中... (${done + completed}/${total})`, ((done + completed) / total) * 100);
+      });
 
-        done++;
-        showStatus(`ダウンロード中... (${done}/${total})`, (done / total) * 100);
-      }
+      done += batchItems.length;
     } else {
       const batchResult = await sendToBg({
         type: 'FETCH_IMAGE_BATCH',
